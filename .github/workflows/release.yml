@@ -3,7 +3,7 @@ on: workflow_dispatch
 
 jobs:
   build:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     env:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
@@ -13,32 +13,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - uses: DamianReeves/write-file-action@master
-        with:
-          path: ./API_KEYS
-          contents: |
-            APP_ID = 6
-            APP_HASH = "eb06d4abfb49dc3eeb1aeb98ae0f581e"
-            MAPS_V2_API = 0
-
-            SIGNING_KEY_PASSWORD = ${{ secrets.SIGNING_KEY_PASSWORD }}
-            SIGNING_KEY_ALIAS = ${{ secrets.SIGNING_KEY_ALIAS }}
-            SIGNING_KEY_STORE_PASSWORD = ${{ secrets.SIGNING_KEY_PASSWORD }}
-          write-mode: overwrite
-
-      - name: Write google-services.json
-        uses: timheuer/base64-to-file@v1.2
-        with:
-          fileName: google-services.json
-          fileDir: ./TMessagesProj
-          encodedString: ${{ secrets.GOOGLE_SERVICES_JSON_FILE_IN_BASE64 }}
-
-      - name: Write signing keystore file
-        uses: timheuer/base64-to-file@v1.2
-        with:
-          fileName: extera.jks
-          fileDir: ./TMessagesProj/config
-          encodedString: ${{ secrets.SIGNING_KEYSTORE_FILE_IN_BASE64 }}
+      # NOTE: Removed base64 -> file steps (google-services.json and keystore)
+      # so this workflow does NOT require any repository secrets.
 
       - name: Update packages
         run: sudo apt-get update
@@ -71,35 +47,26 @@ jobs:
 
       - name: Prepare Environment
         run: |
-          echo "Removing large packages"
           sudo apt-get update
-          sudo apt-get remove -y '^llvm-.*'
-          sudo apt-get remove -y 'php.*'
-          sudo apt-get remove -y '^mongodb-.*'
-          sudo apt-get remove -y '^mysql-.*'
-          sudo apt-get remove -y azure-cli firefox mono-devel libgl1-mesa-dri
-          sudo apt-get autoremove -y
-          sudo apt-get clean
-
-          echo "Removing large directories"
-          sudo rm -rf /usr/share/dotnet/
-          sudo rm -rf /usr/local/graalvm/
-          sudo rm -rf /usr/local/.ghcup/
-          sudo rm -rf /usr/local/share/powershell
-          sudo rm -rf /usr/local/share/chromium
-          sudo rm -rf /usr/local/lib/node_modules
-          df -h
-
-          sudo apt-get install bison gcc make curl ninja-build ccache -y
+          sudo apt-get install -y bison gcc make curl ninja-build ccache
 
       - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
+        run: chmod +x TMessagesProj/gradlew
 
-      - name: Build with Gradle
-        run: ./gradlew assembleAfatRelease
+      - name: Build debug APK (in TMessagesProj)
+        working-directory: TMessagesProj
+        run: ./gradlew assembleDebug --no-daemon --console=plain
+
+      - name: Show build outputs for debugging
+        run: |
+          echo "Listing APK output directories:"
+          ls -R TMessagesProj/**/build/outputs/apk || true
+          echo "Listing any APK files found:"
+          find TMessagesProj -type f -name "*.apk" -print || true
 
       - name: Upload
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: Release APK
-          path: TMessagesProj/build/outputs/apk/afat/release/*.apk
+          # robust glob: find APKs anywhere under the Android project
+          path: TMessagesProj/**/build/outputs/apk/**/*.apk
