@@ -13,9 +13,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # NOTE: Removed base64 -> file steps (google-services.json and keystore)
-      # so this workflow does NOT require any repository secrets.
-
       - name: Update packages
         run: sudo apt-get update
 
@@ -50,12 +47,23 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y bison gcc make curl ninja-build ccache
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x TMessagesProj/gradlew
-
-      - name: Build debug APK (in TMessagesProj)
-        working-directory: TMessagesProj
-        run: ./gradlew assembleDebug --no-daemon --console=plain
+      - name: Find and run gradlew to build debug APK
+        # This step finds the first gradlew in the repo, makes it executable, and runs it.
+        run: |
+          set -e
+          echo "Looking for gradlew in repository..."
+          GRADLEW_PATH=$(find . -type f -name gradlew | head -n 1 || true)
+          if [ -z "$GRADLEW_PATH" ]; then
+            echo "ERROR: gradlew not found in repository."
+            echo "Contents of repo root:"
+            ls -la
+            exit 1
+          fi
+          echo "Found gradlew at: $GRADLEW_PATH"
+          chmod +x "$GRADLEW_PATH"
+          echo "Running gradlew to build debug APK for TMessagesProj..."
+          # Use -p TMessagesProj to run the build for that module regardless of wrapper location
+          "$GRADLEW_PATH" -p TMessagesProj assembleDebug --no-daemon --console=plain
 
       - name: Show build outputs for debugging
         run: |
@@ -68,5 +76,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Release APK
-          # robust glob: find APKs anywhere under the Android project
           path: TMessagesProj/**/build/outputs/apk/**/*.apk
