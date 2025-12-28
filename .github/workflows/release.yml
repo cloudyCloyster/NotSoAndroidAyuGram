@@ -1,4 +1,4 @@
-fname: Build release APK
+name: Build release APK
 on: workflow_dispatch
 
 jobs:
